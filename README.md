@@ -1,5 +1,7 @@
 # SKYVIDEO EDITOR
 
+![SKYVIDEO EDITOR 介面截圖](./SKYVIDEO_EDITOR-screenshot-v1.7.png)
+
 完全離線的 Windows 桌面影片剪輯與合成工具。影片只在本機處理，不需要瀏覽器、localhost 或網路服務。
 
 ## 功能
@@ -22,7 +24,7 @@
 
 ## FFmpeg
 
-原始碼包不包含大型第三方 `ffmpeg.exe`。請從 [FFmpeg 官方網站](https://ffmpeg.org/download.html) 取得 Windows 版本，放到 EXE 同一資料夾，或在程式內按「FFmpeg 設定」選擇它。FFmpeg 依其自身授權條款發佈。
+原始碼包不包含大型第三方 `ffmpeg.exe`。請從 [FFmpeg 官方網站](https://ffmpeg.org/download.html) 取得 Windows 版本，放到 EXE 同一資料夾，或在程式內按「FFmpeg 設定」選擇它。FFmpeg 依其授權條款發佈。
 
 ## 直接使用 Release
 

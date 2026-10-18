@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -11,6 +11,8 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
+[assembly: AssemblyVersion("1.8.1.0")]
+[assembly: AssemblyFileVersion("1.8.1.0")]
 namespace SkyVideoEditor {
     class Clip {
         public string Path; public string Name; public double Duration, Start, End; public int Width, Height; public double Fps;
@@ -45,7 +47,7 @@ namespace SkyVideoEditor {
         TextBox startBox=new TextBox(), endBox=new TextBox(); Label now=new Label(), status=new Label(), ffLabel=new Label(); ProgressBar progress=new ProgressBar();
         Button add=new Button(), cut=new Button(), merge=new Button(), cancel=new Button(); string ffmpeg,ffprobe; Task<string[]> ffmpegInit; readonly Queue<string[]> pendingDrops=new Queue<string[]>(); int selected=-1, dragIndex=-1; bool busy, updatingList; Point dragOrigin; int previewVersion; const string ClipDragFormat="SkyVideoEditor.Clips";
         public MainForm() {
-            Text="SKYVIDEO EDITOR — 修正版 1.8"; AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi; Font=new Font("Segoe UI",9); ClientSize=new Size(1100,680); MinimumSize=new Size(900,620); StartPosition=FormStartPosition.CenterScreen; BackColor=Color.White;
+            Text="SKYVIDEO EDITOR — 修正版 1.8.1"; AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi; Font=new Font("Segoe UI",9); ClientSize=new Size(1100,680); MinimumSize=new Size(900,620); StartPosition=FormStartPosition.CenterScreen; BackColor=Color.White;
             ForeColor=Color.FromArgb(31,41,55);BuildUi();ffLabel.Text="● 正在檢查 FFmpeg…";ffLabel.ForeColor=Color.DarkOrange;Shown+=async(s,e)=>await EnsureFfmpegReady();
         }
         void BuildUi() {

@@ -56,3 +56,13 @@ GitHub Release 同時提供單檔 `SKYVIDEO_EDITOR.exe`、含原始碼的 `SKYVI
 ## 授權
 
 本專案採 MIT License。FFmpeg 是獨立的第三方元件。
+
+## 重建 Portable ZIP（外部 FFmpeg）
+
+主程式保持小型原生 EXE，FFmpeg 不會嵌入主程式。將已取得的 FFmpeg 發行檔、可選的 ffprobe／DLL、授權和來源說明放在同一個資料夾，再執行：
+
+```powershell
+.\build_portable.ps1 -FfmpegDirectory 'D:\FFmpeg-distribution'
+```
+
+產生 `dist\SKYVIDEO_EDITOR-Portable.zip` 和 `.zip.sha256`。請完整解壓縮後執行，保留主程式旁的 FFmpeg 與相關檔案。打包流程會保留第三方原始授權文件；本程式文件以 `SKYVIDEO_EDITOR-` 前綴另存。

@@ -5,14 +5,15 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("1.8.1.0")]
-[assembly: AssemblyFileVersion("1.8.1.0")]
+[assembly: AssemblyVersion("1.8.2.0")]
+[assembly: AssemblyFileVersion("1.8.2.0")]
 namespace SkyVideoEditor {
     class Clip {
         public string Path; public string Name; public double Duration, Start, End; public int Width, Height; public double Fps;
@@ -42,12 +43,41 @@ namespace SkyVideoEditor {
         }
     }
 
+    // Use native channel/thumb geometry so click-to-seek follows the visible slider at any DPI.
+    class SeekTrackBar : TrackBar {
+        [StructLayout(LayoutKind.Sequential)] struct NativeRect { public int Left,Top,Right,Bottom; }
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd,int msg,IntPtr wParam,ref NativeRect rect);
+        bool dragging;
+        void SeekAt(int x){
+            var channel=new NativeRect();var thumb=new NativeRect();
+            SendMessage(Handle,0x041A,IntPtr.Zero,ref channel); // TBM_GETCHANNELRECT
+            SendMessage(Handle,0x0419,IntPtr.Zero,ref thumb);   // TBM_GETTHUMBRECT
+            double left=channel.Left+(thumb.Right-thumb.Left-1)/2.0;
+            double right=channel.Right-(thumb.Right-thumb.Left+1)/2.0;
+            if(right<=left)return;
+            double fraction=Math.Max(0,Math.Min(1,(x-left)/(right-left)));
+            int target=Minimum+(int)Math.Round(fraction*((double)Maximum-Minimum));
+            if(Value!=target){Value=target;OnScroll(EventArgs.Empty);}
+        }
+        protected override void WndProc(ref Message m){
+            // Intercept before the native trackbar starts page-step/repeat behaviour.
+            if(Enabled&&(m.Msg==0x0201||m.Msg==0x0203)){
+                Focus();dragging=true;Capture=true;SeekAt((short)(m.LParam.ToInt64()&0xffff));return;
+            }
+            if(dragging&&m.Msg==0x0200){SeekAt((short)(m.LParam.ToInt64()&0xffff));return;}
+            if(dragging&&m.Msg==0x0202){SeekAt((short)(m.LParam.ToInt64()&0xffff));dragging=false;Capture=false;return;}
+            base.WndProc(ref m);
+        }
+        protected override void OnMouseCaptureChanged(EventArgs e){if(!Capture)dragging=false;base.OnMouseCaptureChanged(e);}
+        protected override void OnEnabledChanged(EventArgs e){if(!Enabled){dragging=false;Capture=false;}base.OnEnabledChanged(e);}
+    }
+
     class MainForm : Form {
-        List<Clip> clips=new List<Clip>(); ListBox list=new ClipListBox(); TrackBar timeline=new TrackBar(); PictureBox preview=new PictureBox(); Timer previewTimer=new Timer(); ToolTip tips=new ToolTip();
+        List<Clip> clips=new List<Clip>(); ListBox list=new ClipListBox(); TrackBar timeline=new SeekTrackBar(); PictureBox preview=new PictureBox(); Timer previewTimer=new Timer(); ToolTip tips=new ToolTip();
         TextBox startBox=new TextBox(), endBox=new TextBox(); Label now=new Label(), status=new Label(), ffLabel=new Label(); ProgressBar progress=new ProgressBar();
-        Button add=new Button(), cut=new Button(), merge=new Button(), cancel=new Button(); string ffmpeg,ffprobe; Task<string[]> ffmpegInit; readonly Queue<string[]> pendingDrops=new Queue<string[]>(); int selected=-1, dragIndex=-1; bool busy, updatingList; Point dragOrigin; int previewVersion; const string ClipDragFormat="SkyVideoEditor.Clips";
+        Button add=new Button(), cut=new Button(), merge=new Button(), cancel=new Button(), moveTop=new Button(), moveBottom=new Button(); string ffmpeg,ffprobe; Task<string[]> ffmpegInit; readonly Queue<string[]> pendingDrops=new Queue<string[]>(); int selected=-1, dragIndex=-1; bool busy, updatingList; Point dragOrigin; int previewVersion; const string ClipDragFormat="SkyVideoEditor.Clips";
         public MainForm() {
-            Text="SKYVIDEO EDITOR — 修正版 1.8.1"; AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi; Font=new Font("Segoe UI",9); ClientSize=new Size(1100,680); MinimumSize=new Size(900,620); StartPosition=FormStartPosition.CenterScreen; BackColor=Color.White;
+            Text="SKYVIDEO EDITOR — 修正版 1.8.2"; AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi; Font=new Font("Segoe UI",9); ClientSize=new Size(1100,680); MinimumSize=new Size(900,620); StartPosition=FormStartPosition.CenterScreen; BackColor=Color.White;
             ForeColor=Color.FromArgb(31,41,55);BuildUi();ffLabel.Text="● 正在檢查 FFmpeg…";ffLabel.ForeColor=Color.DarkOrange;Shown+=async(s,e)=>await EnsureFfmpegReady();
         }
         void BuildUi() {
@@ -63,13 +93,16 @@ namespace SkyVideoEditor {
             var split=new SplitContainer{Dock=DockStyle.Fill,SplitterDistance=520,BackColor=Color.White,Margin=new Padding(12,10,12,8)};root.Controls.Add(split,0,1);
             Load+=(s,e)=>{int panelMin=(int)Math.Ceiling(360*CurrentAutoScaleDimensions.Width/96f);split.Panel1MinSize=panelMin;split.Panel2MinSize=panelMin;if(split.Width>panelMin*2+split.SplitterWidth)split.SplitterDistance=Math.Max(panelMin,Math.Min(split.Width-panelMin-split.SplitterWidth,(int)(split.Width*.48)));};
             var left=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Margin=Padding.Empty};left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));left.RowStyles.Add(new RowStyle(SizeType.AutoSize));left.RowStyles.Add(new RowStyle(SizeType.Percent,100)); var bar=new FlowLayoutPanel{Dock=DockStyle.Fill,AutoSize=true,Margin=Padding.Empty,WrapContents=true};
-            var up=new Button{Text="↑ 上移",AutoSize=true}; up.Click+=(s,e)=>Reorder(-1); var down=new Button{Text="↓ 下移",AutoSize=true}; down.Click+=(s,e)=>Reorder(1); var rem=new Button{Text="× 移除",AutoSize=true}; rem.Click+=(s,e)=>RemoveSelected(); var all=new Button{Text="全選",AutoSize=true};all.Click+=(s,e)=>SelectAllClips();bar.Controls.Add(up);bar.Controls.Add(down);bar.Controls.Add(rem);bar.Controls.Add(all);left.Controls.Add(bar);
+            var up=new Button{Text="↑ 上移",AutoSize=true}; up.Click+=(s,e)=>Reorder(-1); var down=new Button{Text="↓ 下移",AutoSize=true}; down.Click+=(s,e)=>Reorder(1); var rem=new Button{Text="× 移除",AutoSize=true}; rem.Click+=(s,e)=>RemoveSelected(); var all=new Button{Text="全選",AutoSize=true};all.Click+=(s,e)=>SelectAllClips();
+            moveTop.Text="移到最頂";moveTop.Click+=(s,e)=>MoveToEdge(false);moveBottom.Text="移到最底";moveBottom.Click+=(s,e)=>MoveToEdge(true);
+            bar.Controls.Add(up);bar.Controls.Add(down);bar.Controls.Add(moveTop);bar.Controls.Add(moveBottom);bar.Controls.Add(rem);bar.Controls.Add(all);left.Controls.Add(bar);
             list.Dock=DockStyle.Fill; list.IntegralHeight=false;list.BackColor=Color.White; list.ForeColor=Color.FromArgb(31,41,55); list.BorderStyle=BorderStyle.FixedSingle; list.Font=new Font("Segoe UI",10); list.ItemHeight=30; list.AllowDrop=true; list.SelectionMode=SelectionMode.MultiExtended;list.SelectedIndexChanged+=(s,e)=>SelectionChanged();list.KeyDown+=ListKeyDown; list.MouseDown+=ListMouseDown; list.MouseMove+=ListMouseMove; list.MouseUp+=(s,e)=>dragIndex=-1; list.DragEnter+=ListDragOver; list.DragOver+=ListDragOver; list.DragDrop+=ListDragDrop; left.Controls.Add(list,0,1);split.Panel1.Controls.Add(left);
             var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=8,Padding=new Padding(12,8,12,6)}; right.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             right.RowStyles.Clear();right.RowStyles.Add(new RowStyle(SizeType.Percent,100));right.RowStyles.Add(new RowStyle(SizeType.AutoSize));right.RowStyles.Add(new RowStyle(SizeType.Absolute,38));for(int row=3;row<8;row++)right.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             preview.Dock=DockStyle.Fill;preview.BackColor=Color.FromArgb(238,242,247);preview.SizeMode=PictureBoxSizeMode.Zoom;preview.BorderStyle=BorderStyle.FixedSingle;right.Controls.Add(preview,0,0);right.SetColumnSpan(preview,2);previewTimer.Interval=260;previewTimer.Tick+=(s,e)=>{previewTimer.Stop();RenderPreview();};
             now.Text="目前 00:00:00.000"; now.AutoSize=true; now.ForeColor=Color.FromArgb(5,150,105); right.Controls.Add(now,0,1);right.SetColumnSpan(now,2);
             timeline.Minimum=0; timeline.Maximum=100000; timeline.TickFrequency=10000; timeline.Dock=DockStyle.Fill; timeline.Scroll+=(s,e)=>TimelineChanged(); right.Controls.Add(timeline,0,2);right.SetColumnSpan(timeline,2);
+            timeline.AccessibleName="影片預覽時間軸";tips.SetToolTip(timeline,"點選時間軸任意位置，或按住滑鼠左右拖曳以預覽；不會更動剪輯起點／終點。");
             right.Controls.Add(new Label{Text="起點 Start",AutoSize=true},0,3);var sb=new Button{Text="設為目前"};sb.Click+=(s,e)=>{if(busy||selected<0)return;startBox.Text=Clip.Fmt(CurrentTime());ApplyTimes();};right.Controls.Add(TimeRow(startBox,sb),1,3);
             right.Controls.Add(new Label{Text="終點 End",AutoSize=true},0,4);var eb=new Button{Text="設為目前"};eb.Click+=(s,e)=>{if(busy||selected<0)return;endBox.Text=Clip.Fmt(CurrentTime());ApplyTimes();};right.Controls.Add(TimeRow(endBox,eb),1,4);
             var apply=new Button{Text="套用時間",AutoSize=true};apply.Click+=(s,e)=>ApplyTimes();right.Controls.Add(apply,1,5);
@@ -79,6 +112,7 @@ namespace SkyVideoEditor {
             ex.Margin=Padding.Empty;ex.WrapContents=false;
             ApplyTheme(this);
             EnableFileDrop(this);
+            UpdateEdgeButtons();
         }
         static TableLayoutPanel TimeRow(TextBox box,Button button){var row=new TableLayoutPanel{Dock=DockStyle.Fill,AutoSize=true,ColumnCount=2,RowCount=1,Margin=Padding.Empty};row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));row.RowStyles.Add(new RowStyle(SizeType.AutoSize));box.Anchor=AnchorStyles.Left|AnchorStyles.Right;button.AutoSize=true;button.Dock=DockStyle.Fill;row.Controls.Add(box,0,0);row.Controls.Add(button,1,0);return row;}
         async Task EnsureFfmpegReady(){if(ffmpeg!=null)return;if(ffmpegInit==null)ffmpegInit=Task.Run(()=>{string adjacent=System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ffmpeg.exe");if(File.Exists(adjacent))return new[]{adjacent,FindSibling(adjacent,"ffprobe.exe")};string found=ExtractBundledFfmpeg();if(found==null)found=Find("ffmpeg.exe");return new[]{found,found==null?null:FindSibling(found,"ffprobe.exe")};});string[] result=await ffmpegInit;if(ffmpeg==null){ffmpeg=result[0];ffprobe=result[1];}UpdateFfmpegLabel();}
@@ -95,7 +129,7 @@ namespace SkyVideoEditor {
         string Run(string exe,string args){var si=new ProcessStartInfo(exe,args){UseShellExecute=false,RedirectStandardError=true,RedirectStandardOutput=true,CreateNoWindow=true,StandardErrorEncoding=Encoding.UTF8,StandardOutputEncoding=Encoding.UTF8};using(var p=Process.Start(si)){string o=p.StandardOutput.ReadToEnd(),e=p.StandardError.ReadToEnd();p.WaitForExit();return o+"\n"+e;}}
         Clip ActiveClip(){return selected>=0&&selected<clips.Count?clips[selected]:null;}
         Clip[] SelectedClips(){return list.SelectedIndices.Cast<int>().Where(i=>i>=0&&i<clips.Count).Select(i=>clips[i]).ToArray();}
-        void SelectionChanged(){if(updatingList)return;if(list.SelectedIndices.Count==0)SelectClip(-1);else if(selected<0||!list.GetSelected(selected))SelectClip(list.SelectedIndex);}
+        void SelectionChanged(){if(updatingList)return;if(list.SelectedIndices.Count==0)SelectClip(-1);else if(selected<0||!list.GetSelected(selected))SelectClip(list.SelectedIndex);UpdateEdgeButtons();}
         void SelectClip(int i){
             previewVersion++;previewTimer.Stop();var previous=preview.Image;preview.Image=null;if(previous!=null)previous.Dispose();
             if(i<0||i>=clips.Count){selected=-1;startBox.Clear();endBox.Clear();timeline.Value=0;now.Text="目前 00:00:00.000";return;}
@@ -108,6 +142,7 @@ namespace SkyVideoEditor {
             finally{list.EndUpdate();updatingList=false;}
             if(active!=null&&clips.Contains(active)&&chosen.Contains(active))selected=clips.IndexOf(active);
             else SelectClip(list.SelectedIndex);
+            UpdateEdgeButtons();
         }
         void SelectAllClips(){if(busy)return;updatingList=true;list.BeginUpdate();try{for(int i=0;i<list.Items.Count;i++)list.SetSelected(i,true);}finally{list.EndUpdate();updatingList=false;}SelectionChanged();list.Focus();}
         void ListKeyDown(object sender,KeyEventArgs e){
@@ -144,6 +179,19 @@ namespace SkyVideoEditor {
             if(d<0){for(int i=1;i<clips.Count;i++)if(chosen.Contains(clips[i])&&!chosen.Contains(clips[i-1])){var c=clips[i];clips[i]=clips[i-1];clips[i-1]=c;changed=true;}}
             else{for(int i=clips.Count-2;i>=0;i--)if(chosen.Contains(clips[i])&&!chosen.Contains(clips[i+1])){var c=clips[i];clips[i]=clips[i+1];clips[i+1]=c;changed=true;}}
             if(changed)RefreshClipList(chosen,active);
+        }
+        void UpdateEdgeButtons(){
+            var chosen=SelectedClips();bool enabled=!busy&&chosen.Length>0;
+            moveTop.Enabled=enabled&&!clips.Take(chosen.Length).SequenceEqual(chosen);
+            moveBottom.Enabled=enabled&&!clips.Skip(clips.Count-chosen.Length).SequenceEqual(chosen);
+        }
+        void MoveToEdge(bool bottom){
+            if(busy)return;var chosen=SelectedClips();if(chosen.Length==0)return;var active=ActiveClip();
+            clips.RemoveAll(c=>chosen.Contains(c));clips.InsertRange(bottom?clips.Count:0,chosen);
+            RefreshClipList(chosen,active);
+            if(bottom)list.TopIndex=Math.Max(0,clips.Count-Math.Max(1,list.ClientSize.Height/Math.Max(1,list.ItemHeight)));
+            else list.TopIndex=0;
+            list.Focus();status.Text="已將 "+chosen.Length+" 支影片移到"+(bottom?"最底":"最頂");
         }
         void RemoveSelected(){
             if(busy)return;var chosen=SelectedClips();if(chosen.Length==0)return;int first=list.SelectedIndex;var active=ActiveClip();
@@ -183,7 +231,7 @@ namespace SkyVideoEditor {
         void OpenPlayer(){if(selected<0)return;try{Process.Start(clips[selected].Path);}catch(Exception ex){MessageBox.Show(ex.Message);}}
         void Cancel(){busy=false;cancel.Enabled=false;status.Text="正在取消…";}
         void SetProgress(int value,string text){Action update=()=>{progress.Value=Math.Max(0,Math.Min(100,value));status.Text=text;};if(IsHandleCreated&&InvokeRequired)BeginInvoke(update);else update();}
-        void SetBusy(bool b,string text){busy=b;add.Enabled=!b;cut.Enabled=!b;merge.Enabled=!b;cancel.Enabled=b;list.Enabled=!b;startBox.Enabled=!b;endBox.Enabled=!b;timeline.Enabled=!b;if(b)progress.Value=0;else if(!text.Contains("完成")&&!text.Contains("已加入"))progress.Value=0;status.Text=text;}
+        void SetBusy(bool b,string text){busy=b;add.Enabled=!b;cut.Enabled=!b;merge.Enabled=!b;cancel.Enabled=b;list.Enabled=!b;startBox.Enabled=!b;endBox.Enabled=!b;timeline.Enabled=!b;UpdateEdgeButtons();if(b)progress.Value=0;else if(!text.Contains("完成")&&!text.Contains("已加入"))progress.Value=0;status.Text=text;}
     }
     static class Program { [STAThread] static void Main(){try{Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);Application.Run(new MainForm());}catch(Exception ex){try{File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(),"SKYVIDEO_EDITOR_error.txt"),ex.ToString());}catch{}MessageBox.Show(ex.ToString(),"SKYVIDEO EDITOR 啟動失敗",MessageBoxButtons.OK,MessageBoxIcon.Error);}} }
 }

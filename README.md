@@ -11,7 +11,8 @@
 - 逐筆預覽、拖曳排序、移除片段、設定起點／終點。
 - 支援 Ctrl＋滑鼠左鍵選取不連續的多筆影片，以及 Shift 範圍選取。
 - 清單有焦點時，Delete 移除所有選取項目；Ctrl+A 或「全選」按鈕選取全部。
-- 「上移」「下移」或拖曳可一次搬移多筆選取項目，保留原本的相對順序。
+- 「上移」「下移」「移到最頂」「移到最底」或拖曳可一次搬移多筆選取項目，保留原本的相對順序。
+- 時間軸整條區域都可點選定位、按住拖曳預覽，不必精準抓住游標；不會改動剪輯起點／終點。
 - 「分別輸出」產生多個 MP4；「合併輸出」依清單順序產生一個 MP4。
 - 批次讀取、剪輯與合成會顯示完成進度。
 
@@ -24,6 +25,14 @@
 ```
 
 輸出檔案為 `dist\SKYVIDEO_EDITOR.exe`。也可以雙擊 `build_native.bat` 建置。
+
+## 1.8.2 更新
+
+- 新增「移到最頂」「移到最底」，支援單選、多選，保留相對順序、目前預覽影片與時間位置，並將清單捲到移動位置。
+- 無選取項目、已位於對應端點，或正在讀取／輸出時，停用對應的新排序按鈕。
+- 時間軸任意位置點擊直接定位，按住即可拖曳；滑鼠拖出邊界仍可定位至開頭／結尾，放開或失去滑鼠擷取即結束拖曳。
+- 保留鍵盤調整、既有預覽延遲與過期影格保護。拖曳只改預覽位置，起點／終點仍由「設為目前」或輸入時間決定。
+- 版本更新為 1.8.2，保留既有 v1.8.1 發行檔。
 
 ## 1.8 修正
 
@@ -40,10 +49,10 @@
 ```powershell
 .\test_native.ps1
 # 也可加入真實影片與 FFmpeg 預覽測試：
-.\test_native.ps1 -FfmpegPath 'D:\YourFolder\ffmpeg.exe'
+.\test_native.ps1 -FfmpegPath 'D:\YourFolder\ffmpeg.exe' -VideoPath 'D:\YourFolder\test.mp4'
 ```
 
-測試涵蓋 End 位置保持、原生 Ctrl 點選、Delete／Ctrl+A、批次移除與排序，以及 100%、125%、150%、200% 的模擬縮放排版。測試影像和紀錄產生在 `work\`；模擬縮放不是跨螢幕 DPI 實測。
+目前附帶的回歸測試涵蓋單選／多選移到最頂與最底、選取與預覽位置保持、忙碌狀態保護，以及不同控制項寬度下的原生時間軸幾何、點擊、拖曳、邊界、擷取釋放與鍵盤操作。另可指定 FFmpeg 與影片測試真實影格預覽、確認剪輯起訖時間不變，並在 `work\` 產生測試畫面。不同寬度測試不等於跨螢幕 DPI 實測。
 
 ## FFmpeg
 
@@ -51,7 +60,7 @@
 
 ## 直接使用 Release
 
-GitHub Release 同時提供單檔 `SKYVIDEO_EDITOR.exe`、含原始碼的 `SKYVIDEO_EDITOR-GitHub-Source-v1.8.zip`，以及內含 `ffmpeg.exe` 的 `SKYVIDEO_EDITOR-Portable-v1.8.zip`。下載 Portable ZIP 並完整解壓縮即可使用；也可把單檔 EXE 放入已有 `ffmpeg.exe` 的程式資料夾。Portable 版本含 Gyan.dev FFmpeg 7.1 GPLv3 建置，授權與對應來源資訊見壓縮檔內文件。
+最新版 v1.8.2 提供單檔 `SKYVIDEO_EDITOR.exe`、含原始碼與測試的 `SKYVIDEO_EDITOR-Source-v1.8.2.zip`，以及內含 `ffmpeg.exe` 的 `SKYVIDEO_EDITOR-Portable.zip` 與 SHA256 校驗檔。下載 Portable ZIP 並完整解壓縮即可使用；也可把單檔 EXE 放入已有 `ffmpeg.exe` 的程式資料夾。Portable 沿用 v1.8.1 的 FFmpeg，保留其授權與對應來源資訊。
 
 ## 授權
 

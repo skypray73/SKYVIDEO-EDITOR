@@ -12,8 +12,8 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("1.10.1.0")]
-[assembly: AssemblyFileVersion("1.10.1.0")]
+[assembly: AssemblyVersion("1.10.2.0")]
+[assembly: AssemblyFileVersion("1.10.2.0")]
 namespace SkyVideoEditor {
     class Clip {
         public string Path; public string Name; public double Duration, Start, End;
@@ -97,7 +97,7 @@ namespace SkyVideoEditor {
         readonly Button remove=new Button{Text="移除"}, selectAll=new Button{Text="全選"};
 
         public MainForm(){
-            Text="SKYVIDEO EDITOR — 1.10.1";
+            Text="SKYVIDEO EDITOR — 1.10.2";
             AutoScaleDimensions=new SizeF(96,96);
             AutoScaleMode=AutoScaleMode.Dpi;
             Font=new Font("Segoe UI",9);
@@ -140,18 +140,14 @@ namespace SkyVideoEditor {
             var inspector=new Panel{Dock=DockStyle.Fill,AutoScroll=true};
             right.Dock=DockStyle.None;
             inspector.Controls.Add(right);
-            inspector.Resize+=(s,e)=>LayoutInspector(inspector,right);
+            inspector.Resize+=(s,e)=>LayoutInspector(inspector,right,CurrentAutoScaleDimensions);
             split.Panel2.Controls.Add(inspector);
             root.Controls.Add(split,0,1);
             Load+=(s,e)=>{
                 FitWorkingArea(Screen.FromControl(this).WorkingArea);
-                LayoutInspector(inspector,right);
-                float scale=CurrentAutoScaleDimensions.Width/96f;
-                int leftMin=(int)Math.Ceiling(300*scale),rightMin=(int)Math.Ceiling(490*scale);
-                if(split.Width<leftMin+rightMin+split.SplitterWidth)return;
-                split.Panel1MinSize=leftMin;
-                split.Panel2MinSize=rightMin;
-                split.SplitterDistance=Math.Max(leftMin,Math.Min(split.Width-rightMin-split.SplitterWidth,(int)(split.Width*.35)));
+                LayoutWorkspaceSplit(split,CurrentAutoScaleDimensions.Width/96f,true);
+                LayoutInspector(inspector,right,CurrentAutoScaleDimensions);
+                split.SizeChanged+=(sender,args)=>LayoutWorkspaceSplit(split,CurrentAutoScaleDimensions.Width/96f,false);
             };
 
             var footer=Grid(3,1);
@@ -187,9 +183,25 @@ namespace SkyVideoEditor {
             SetBounds(work.Left+(work.Width-width)/2,work.Top+(work.Height-height)/2,width,height);
         }
 
-        void LayoutInspector(Panel host,TableLayoutPanel content){
-            SizeF dpi=CurrentAutoScaleDimensions;
-            var minimum=new Size((int)Math.Ceiling(470*dpi.Width/96f),(int)Math.Ceiling(490*dpi.Height/96f));
+        static void LayoutWorkspaceSplit(SplitContainer split,float scale,bool initialize){
+            int available=split.ClientSize.Width-split.SplitterWidth;
+            if(available<2)return;
+            int preferredLeft=(int)Math.Round(available*.32);
+            // Use the available width when the monitor cannot fit both preferred minima.
+            int leftMin=Math.Min((int)Math.Ceiling(250*scale),Math.Max(1,preferredLeft));
+            int rightMin=Math.Min((int)Math.Ceiling(490*scale),available-leftMin);
+            int maxLeft=available-rightMin;
+            int distance=Math.Max(leftMin,Math.Min(maxLeft,initialize?preferredLeft:split.SplitterDistance));
+            if(split.Panel1MinSize==leftMin&&split.Panel2MinSize==rightMin&&split.SplitterDistance==distance)return;
+            split.Panel1MinSize=0;
+            split.Panel2MinSize=0;
+            split.SplitterDistance=distance;
+            split.Panel1MinSize=leftMin;
+            split.Panel2MinSize=rightMin;
+        }
+
+        static void LayoutInspector(Panel host,TableLayoutPanel content,SizeF dpi){
+            var minimum=new Size((int)Math.Ceiling(470*dpi.Width/96f),(int)Math.Ceiling(390*dpi.Height/96f));
             if(host.AutoScrollMinSize!=minimum)host.AutoScrollMinSize=minimum;
             bool vertical=host.Height<minimum.Height;
             bool horizontal=host.Width-(vertical?SystemInformation.VerticalScrollBarWidth:0)<minimum.Width;

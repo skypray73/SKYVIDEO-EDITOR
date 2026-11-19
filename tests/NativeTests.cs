@@ -21,8 +21,25 @@ class NativeTests {
     static void Set(object o,string name,object value){o.GetType().GetField(name,BindingFlags.Instance|BindingFlags.NonPublic).SetValue(o,value);}
     static void Call(object o,string name,params object[] args){o.GetType().GetMethod(name,BindingFlags.Instance|BindingFlags.NonPublic).Invoke(o,args);}
     static string Order(List<Clip> c){return string.Join("",c.Select(x=>x.Name));}
+    static void CheckWorkspaceSplit(){
+        var layout=typeof(MainForm).GetMethod("LayoutWorkspaceSplit",BindingFlags.Static|BindingFlags.NonPublic);
+        using(var split=new SplitContainer{Width=1110,Height=600,SplitterWidth=15,SplitterDistance=50,FixedPanel=FixedPanel.Panel1}){
+            layout.Invoke(null,new object[]{split,1.5f,true});
+            Assert(split.Panel1.Width>=340,"At 150% the compact workspace still shows the clip panel");
+            Assert(split.Panel2.Width>=735,"At 150% the compact workspace still fits the inspector");
+            split.Width=760;
+            layout.Invoke(null,new object[]{split,1.5f,false});
+            Assert(split.Panel1.Width>=225&&split.Panel2.Width>=500,"Narrow workspace distributes width between both panels");
+            split.Width=1740;
+            layout.Invoke(null,new object[]{split,1.5f,true});
+            split.SplitterDistance=610;
+            layout.Invoke(null,new object[]{split,1.5f,false});
+            Assert(split.SplitterDistance==610,"A valid splitter position is retained");
+        }
+    }
     [STAThread] static int Main(string[] args){try{
         Application.EnableVisualStyles();
+        CheckWorkspaceSplit();
         using(var form=new MainForm()){
             var handle=form.Handle;var clips=Get<List<Clip>>(form,"clips");var list=Get<ListBox>(form,"list");
             var top=Get<Button>(form,"moveTop");var bottom=Get<Button>(form,"moveBottom");var timeline=Get<TrackBar>(form,"timeline");

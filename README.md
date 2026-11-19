@@ -1,10 +1,12 @@
 # SKYVIDEO EDITOR
 
-![SKYVIDEO EDITOR v1.9.0 的影片編碼與檔案格式選項](./SKYVIDEO_EDITOR-v1.9.0.png)
+![SKYVIDEO EDITOR v1.10.0 的素材清單、影片預覽、剪輯範圍與輸出設定](./SKYVIDEO_EDITOR-v1.10.0.png)
 
 完全離線的 Windows 桌面影片剪輯與合成工具。影片只在本機處理，不需要瀏覽器、localhost 或網路服務。
 
 ## 功能
+
+- 素材清單會顯示影片數量及每支影片的剪輯起訖，預覽區會顯示當前時間與影片總長。
 
 - 一次加入多支影片，也可直接拖曳到程式視窗。
 - 支援 MP4、MOV、MKV、WebM、AVI、M4V、WMV、FLV、MPEG、MPG、TS、MTS、M2TS。

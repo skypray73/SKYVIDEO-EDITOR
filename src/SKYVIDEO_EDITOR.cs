@@ -12,8 +12,8 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("1.9.1.0")]
-[assembly: AssemblyFileVersion("1.9.1.0")]
+[assembly: AssemblyVersion("1.10.0.0")]
+[assembly: AssemblyFileVersion("1.10.0.0")]
 namespace SkyVideoEditor {
     class Clip {
         public string Path; public string Name; public double Duration, Start, End;
@@ -83,44 +83,393 @@ namespace SkyVideoEditor {
         List<Clip> clips=new List<Clip>(); ListBox list=new ClipListBox(); TrackBar timeline=new SeekTrackBar(); PictureBox preview=new PictureBox(); Timer previewTimer=new Timer(); ToolTip tips=new ToolTip();
         TextBox startBox=new TextBox(), endBox=new TextBox(); Label now=new Label(), status=new Label(), ffLabel=new Label(); ProgressBar progress=new ProgressBar();
         Button add=new Button(), cut=new Button(), merge=new Button(), cancel=new Button(), moveTop=new Button(), moveBottom=new Button(); string ffmpeg,ffprobe; Task<string[]> ffmpegInit; readonly Queue<string[]> pendingDrops=new Queue<string[]>(); int selected=-1, dragIndex=-1; bool busy, updatingList; Point dragOrigin; int previewVersion; const string ClipDragFormat="SkyVideoEditor.Clips";
-        public MainForm() {
-            Text="SKYVIDEO EDITOR — 1.9.1"; AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi; Font=new Font("Segoe UI",9); ClientSize=new Size(1100,680); MinimumSize=new Size(900,620); StartPosition=FormStartPosition.CenterScreen; BackColor=Color.White;
-            ForeColor=Color.FromArgb(31,41,55);BuildUi();ffLabel.Text="● 正在檢查 FFmpeg…";ffLabel.ForeColor=Color.DarkOrange;Shown+=async(s,e)=>await EnsureFfmpegReady();
+        static readonly Color Ink=Color.FromArgb(22,35,53);
+        static readonly Color Muted=Color.FromArgb(68,85,104);
+        static readonly Color Surface=Color.White;
+        static readonly Color Canvas=Color.FromArgb(235,240,246);
+        static readonly Color Border=Color.FromArgb(201,213,227);
+        static readonly Color Navy=Color.FromArgb(15,28,49);
+        static readonly Color Blue=Color.FromArgb(27,82,182);
+        static readonly Color WhiteOnNavy=Color.FromArgb(232,240,251);
+        readonly Label clipCount=new Label(), emptyClips=new Label(), previewName=new Label(), durationLabel=new Label();
+        readonly Button openPlayer=new Button{Text="開啟播放器"};
+        readonly Button moveUp=new Button{Text="↑ 上移"}, moveDown=new Button{Text="↓ 下移"};
+        readonly Button remove=new Button{Text="移除"}, selectAll=new Button{Text="全選"};
+
+        public MainForm(){
+            Text="SKYVIDEO EDITOR — 1.10.0";
+            AutoScaleDimensions=new SizeF(96,96);
+            AutoScaleMode=AutoScaleMode.Dpi;
+            Font=new Font("Segoe UI",9);
+            ClientSize=new Size(1160,744);
+            MinimumSize=new Size(960,712);
+            StartPosition=FormStartPosition.CenterScreen;
+            BackColor=Canvas;
+            ForeColor=Ink;
+            BuildUi();
+            ffLabel.Text="正在檢查 FFmpeg…";
+            ffLabel.ForeColor=WhiteOnNavy;
+            Shown+=async(s,e)=>await EnsureFfmpegReady();
         }
-        void BuildUi() {
-            var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,Margin=Padding.Empty,Padding=Padding.Empty};
+
+        void BuildUi(){
+            var root=Grid(1,3);
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute,64));root.RowStyles.Add(new RowStyle(SizeType.Percent,100));root.RowStyles.Add(new RowStyle(SizeType.Absolute,38));Controls.Add(root);
-            var top=new FlowLayoutPanel{Dock=DockStyle.Top,Height=64,Padding=new Padding(18,11,18,9),BackColor=Color.FromArgb(245,247,250)};
-            var title=new Label{Text="SKYVIDEO EDITOR",AutoSize=true,Font=new Font("Segoe UI",19,FontStyle.Bold),ForeColor=Color.FromArgb(17,32,58),Margin=new Padding(0,5,24,0)}; top.Controls.Add(title);
-            add.Text="＋ 加入影片"; add.AutoSize=true; add.Click+=(s,e)=>AddFiles(); top.Controls.Add(add);
-            var open=new Button{Text="開啟播放器",AutoSize=true}; open.Click+=(s,e)=>OpenPlayer(); top.Controls.Add(open);
-            chooseFfmpeg.Click+=(s,e)=>ChooseFfmpeg(); top.Controls.Add(chooseFfmpeg);
-            ffLabel.AutoSize=true; ffLabel.Margin=new Padding(20,8,0,0); top.Controls.Add(ffLabel);top.Dock=DockStyle.Fill;top.Margin=Padding.Empty;top.WrapContents=false;root.Controls.Add(top,0,0);
-            var split=new SplitContainer{Dock=DockStyle.Fill,SplitterDistance=520,BackColor=Color.White,Margin=new Padding(12,10,12,8)};root.Controls.Add(split,0,1);
-            Load+=(s,e)=>{int panelMin=(int)Math.Ceiling(360*CurrentAutoScaleDimensions.Width/96f);split.Panel1MinSize=panelMin;split.Panel2MinSize=panelMin;if(split.Width>panelMin*2+split.SplitterWidth)split.SplitterDistance=Math.Max(panelMin,Math.Min(split.Width-panelMin-split.SplitterWidth,(int)(split.Width*.48)));};
-            var left=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Margin=Padding.Empty};left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));left.RowStyles.Add(new RowStyle(SizeType.AutoSize));left.RowStyles.Add(new RowStyle(SizeType.Percent,100)); var bar=new FlowLayoutPanel{Dock=DockStyle.Fill,AutoSize=true,Margin=Padding.Empty,WrapContents=true};
-            var up=new Button{Text="↑ 上移",AutoSize=true}; up.Click+=(s,e)=>Reorder(-1); var down=new Button{Text="↓ 下移",AutoSize=true}; down.Click+=(s,e)=>Reorder(1); var rem=new Button{Text="× 移除",AutoSize=true}; rem.Click+=(s,e)=>RemoveSelected(); var all=new Button{Text="全選",AutoSize=true};all.Click+=(s,e)=>SelectAllClips();
-            moveTop.Text="移到最頂";moveTop.Click+=(s,e)=>MoveToEdge(false);moveBottom.Text="移到最底";moveBottom.Click+=(s,e)=>MoveToEdge(true);
-            bar.Controls.Add(up);bar.Controls.Add(down);bar.Controls.Add(moveTop);bar.Controls.Add(moveBottom);bar.Controls.Add(rem);bar.Controls.Add(all);left.Controls.Add(bar);
-            list.Dock=DockStyle.Fill; list.IntegralHeight=false;list.BackColor=Color.White; list.ForeColor=Color.FromArgb(31,41,55); list.BorderStyle=BorderStyle.FixedSingle; list.Font=new Font("Segoe UI",10); list.ItemHeight=30; list.AllowDrop=true; list.SelectionMode=SelectionMode.MultiExtended;list.SelectedIndexChanged+=(s,e)=>SelectionChanged();list.KeyDown+=ListKeyDown; list.MouseDown+=ListMouseDown; list.MouseMove+=ListMouseMove; list.MouseUp+=(s,e)=>dragIndex=-1; list.DragEnter+=ListDragOver; list.DragOver+=ListDragOver; list.DragDrop+=ListDragDrop; left.Controls.Add(list,0,1);split.Panel1.Controls.Add(left);
-            var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=8,Padding=new Padding(12,8,12,6)}; right.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-            right.RowStyles.Clear();right.RowStyles.Add(new RowStyle(SizeType.Percent,100));right.RowStyles.Add(new RowStyle(SizeType.AutoSize));right.RowStyles.Add(new RowStyle(SizeType.Absolute,38));for(int row=3;row<8;row++)right.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            preview.Dock=DockStyle.Fill;preview.BackColor=Color.FromArgb(238,242,247);preview.SizeMode=PictureBoxSizeMode.Zoom;preview.BorderStyle=BorderStyle.FixedSingle;right.Controls.Add(preview,0,0);right.SetColumnSpan(preview,2);previewTimer.Interval=260;previewTimer.Tick+=(s,e)=>{previewTimer.Stop();RenderPreview();};
-            now.Text="目前 00:00:00.000"; now.AutoSize=true; now.ForeColor=Color.FromArgb(5,150,105); right.Controls.Add(now,0,1);right.SetColumnSpan(now,2);
-            timeline.Minimum=0; timeline.Maximum=100000; timeline.TickFrequency=10000; timeline.Dock=DockStyle.Fill; timeline.Scroll+=(s,e)=>TimelineChanged(); right.Controls.Add(timeline,0,2);right.SetColumnSpan(timeline,2);
-            timeline.AccessibleName="影片預覽時間軸";tips.SetToolTip(timeline,"點選時間軸任意位置，或按住滑鼠左右拖曳以預覽；不會更動剪輯起點／終點。");
-            right.Controls.Add(new Label{Text="起點 Start",AutoSize=true},0,3);var sb=new Button{Text="設為目前"};sb.Click+=(s,e)=>{if(busy||selected<0)return;startBox.Text=Clip.Fmt(CurrentTime());ApplyTimes();};right.Controls.Add(TimeRow(startBox,sb),1,3);
-            right.Controls.Add(new Label{Text="終點 End",AutoSize=true},0,4);var eb=new Button{Text="設為目前"};eb.Click+=(s,e)=>{if(busy||selected<0)return;endBox.Text=Clip.Fmt(CurrentTime());ApplyTimes();};right.Controls.Add(TimeRow(endBox,eb),1,4);
-            var apply=new Button{Text="套用時間",AutoSize=true};apply.Click+=(s,e)=>ApplyTimes();right.Controls.Add(apply,1,5);
-            var settings=BuildExportSettings();
-            right.Controls.Add(settings,0,6);right.SetColumnSpan(settings,2);
-            var ex=new FlowLayoutPanel{Dock=DockStyle.Fill,AutoSize=true};cut.Text="分別輸出";cut.AutoSize=true;cut.Click+=(s,e)=>Export(false);merge.Text="合併輸出";merge.AutoSize=true;merge.Click+=(s,e)=>Export(true);cancel.Text="取消";cancel.AutoSize=true;cancel.Enabled=false;cancel.Click+=(s,e)=>Cancel();ex.Controls.Add(cut);ex.Controls.Add(merge);ex.Controls.Add(cancel);tips.AutoPopDelay=8000;tips.InitialDelay=300;tips.ReshowDelay=100;tips.SetToolTip(cut,"將清單中的每支影片依起點／終點剪輯，分別儲存成檔案。");tips.SetToolTip(merge,"將清單中的所有剪輯片段依目前順序合併成一支影片。");right.Controls.Add(ex,0,7);right.SetColumnSpan(ex,2);split.Panel2.Controls.Add(right);
-            var bottom=new TableLayoutPanel{Dock=DockStyle.Fill,Margin=Padding.Empty,ColumnCount=2,RowCount=1,Padding=new Padding(18,7,18,7),BackColor=Color.FromArgb(245,247,250)};bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,280));status.Text="就緒";status.Dock=DockStyle.Fill;status.ForeColor=Color.FromArgb(75,85,99);progress.Dock=DockStyle.Fill;progress.Minimum=0;progress.Maximum=100;progress.Value=0;progress.Style=ProgressBarStyle.Continuous;bottom.Controls.Add(status,0,0);bottom.Controls.Add(progress,1,0);root.Controls.Add(bottom,0,2);
-            ex.Margin=Padding.Empty;ex.WrapContents=false;
-            ApplyTheme(this);
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute,34));
+            Controls.Add(root);
+            root.Controls.Add(BuildHeader(),0,0);
+
+            var split=new SplitContainer{
+                Dock=DockStyle.Fill,
+                Margin=new Padding(14,12,14,12),
+                BackColor=Canvas,
+                SplitterWidth=10,
+                FixedPanel=FixedPanel.Panel1
+            };
+            split.Panel1.Controls.Add(BuildClipPanel());
+            var right=Grid(1,3);
+            right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            right.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+            right.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            right.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            right.Controls.Add(BuildPreview(),0,0);
+            right.Controls.Add(BuildTrimPanel(),0,1);
+            right.Controls.Add(BuildOutputPanel(),0,2);
+            split.Panel2.Controls.Add(right);
+            root.Controls.Add(split,0,1);
+            Load+=(s,e)=>{
+                float scale=CurrentAutoScaleDimensions.Width/96f;
+                int leftMin=(int)Math.Ceiling(300*scale),rightMin=(int)Math.Ceiling(490*scale);
+                if(split.Width<leftMin+rightMin+split.SplitterWidth)return;
+                split.Panel1MinSize=leftMin;
+                split.Panel2MinSize=rightMin;
+                split.SplitterDistance=Math.Max(leftMin,Math.Min(split.Width-rightMin-split.SplitterWidth,(int)(split.Width*.35)));
+            };
+
+            var footer=Grid(2,1);
+            footer.BackColor=Surface;
+            footer.Padding=new Padding(16,7,16,7);
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,200));
+            status.Text="就緒";
+            status.AutoEllipsis=true;
+            status.Dock=DockStyle.Fill;
+            status.TextAlign=ContentAlignment.MiddleLeft;
+            status.ForeColor=Muted;
+            progress.Dock=DockStyle.Fill;
+            progress.Height=12;
+            progress.Style=ProgressBarStyle.Continuous;
+            footer.Controls.Add(status,0,0);
+            footer.Controls.Add(progress,1,0);
+            root.Controls.Add(footer,0,2);
+
+            tips.AutoPopDelay=8000;
+            tips.InitialDelay=300;
+            tips.ReshowDelay=100;
             EnableFileDrop(this);
             UpdateEdgeButtons();
+        }
+
+        TableLayoutPanel BuildHeader(){
+            var header=Grid(3,1);
+            header.AutoSize=true;
+            header.BackColor=Navy;
+            header.Padding=new Padding(16,9,16,9);
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            var brand=Heading("SKYVIDEO EDITOR",16);
+            brand.ForeColor=Color.White;
+            brand.Anchor=AnchorStyles.Left;
+            header.Controls.Add(brand,0,0);
+            ffLabel.AutoSize=true;
+            ffLabel.Anchor=AnchorStyles.Right;
+            ffLabel.Margin=new Padding(6,0,14,0);
+            header.Controls.Add(ffLabel,1,0);
+            chooseFfmpeg.Click+=(s,e)=>ChooseFfmpeg();
+            StyleButton(chooseFfmpeg,false,true);
+            header.Controls.Add(chooseFfmpeg,2,0);
+            return header;
+        }
+
+        TableLayoutPanel BuildClipPanel(){
+            var panel=Grid(1,3);
+            panel.BackColor=Surface;
+            panel.Padding=new Padding(12);
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            panel.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+
+            var heading=Grid(2,2);
+            heading.AutoSize=true;
+            heading.Margin=new Padding(0,0,0,9);
+            heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            heading.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            var title=Heading("素材清單",13);
+            title.Anchor=AnchorStyles.Left;
+            heading.Controls.Add(title,0,0);
+            clipCount.ForeColor=Muted;
+            clipCount.AutoSize=true;
+            clipCount.Anchor=AnchorStyles.Left;
+            heading.Controls.Add(clipCount,0,1);
+            add.Text="＋ 加入影片";
+            add.Click+=(s,e)=>AddFiles();
+            StyleButton(add,true);
+            add.Anchor=AnchorStyles.Right;
+            heading.Controls.Add(add,1,0);
+            heading.SetRowSpan(add,2);
+            panel.Controls.Add(heading,0,0);
+
+            var bar=ButtonRow();
+            bar.Margin=new Padding(0,0,0,8);
+            moveUp.Click+=(s,e)=>Reorder(-1);
+            moveDown.Click+=(s,e)=>Reorder(1);
+            moveTop.Text="到最頂";
+            moveTop.Click+=(s,e)=>MoveToEdge(false);
+            moveBottom.Text="到最底";
+            moveBottom.Click+=(s,e)=>MoveToEdge(true);
+            remove.Click+=(s,e)=>RemoveSelected();
+            selectAll.Click+=(s,e)=>SelectAllClips();
+            foreach(var button in new[]{moveUp,moveDown,moveTop,moveBottom,selectAll,remove}){
+                StyleButton(button);
+                button.Padding=new Padding(4,1,4,1);
+                button.Margin=new Padding(0,2,4,2);
+                bar.Controls.Add(button);
+            }
+            tips.SetToolTip(remove,"從清單移除選取的影片（Delete）");
+            tips.SetToolTip(selectAll,"選取清單中的全部影片（Ctrl+A）");
+            panel.Controls.Add(bar,0,1);
+
+            var listArea=new Panel{Dock=DockStyle.Fill,Margin=Padding.Empty,BackColor=Color.FromArgb(245,248,252)};
+            list.Dock=DockStyle.Fill;
+            list.IntegralHeight=false;
+            list.BorderStyle=BorderStyle.None;
+            list.BackColor=listArea.BackColor;
+            list.Font=new Font("Segoe UI",10);
+            list.DrawMode=DrawMode.OwnerDrawFixed;
+            ClientSizeChanged+=(s,e)=>UpdateClipRowHeight();
+            Shown+=(s,e)=>UpdateClipRowHeight();
+            UpdateClipRowHeight();
+            list.SelectionMode=SelectionMode.MultiExtended;
+            list.AccessibleName="影片素材清單";
+            list.DrawItem+=DrawClip;
+            list.SelectedIndexChanged+=(s,e)=>SelectionChanged();
+            list.KeyDown+=ListKeyDown;
+            list.MouseDown+=ListMouseDown;
+            list.MouseMove+=ListMouseMove;
+            list.MouseUp+=(s,e)=>dragIndex=-1;
+            list.DragEnter+=ListDragOver;
+            list.DragOver+=ListDragOver;
+            list.DragDrop+=ListDragDrop;
+            listArea.Controls.Add(list);
+
+            emptyClips.Text="將影片拖到這裡"+Environment.NewLine+"或按「加入影片」瀏覽檔案";
+            emptyClips.Dock=DockStyle.Fill;
+            emptyClips.TextAlign=ContentAlignment.MiddleCenter;
+            emptyClips.ForeColor=Muted;
+            emptyClips.BackColor=listArea.BackColor;
+            listArea.Controls.Add(emptyClips);
+            emptyClips.BringToFront();
+            panel.Controls.Add(listArea,0,2);
+            return panel;
+        }
+
+        TableLayoutPanel BuildPreview(){
+            var panel=Grid(2,4);
+            panel.BackColor=Surface;
+            panel.Padding=new Padding(12,9,12,5);
+            panel.Margin=new Padding(0,0,0,9);
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            panel.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+            var labels=Grid(1,2);
+            labels.AutoSize=true;
+            labels.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            labels.Controls.Add(Heading("影片預覽",13),0,0);
+            previewName.Text="尚未選取影片";
+            previewName.ForeColor=Muted;
+            previewName.AutoEllipsis=true;
+            previewName.Dock=DockStyle.Top;
+            previewName.Height=18;
+            labels.Controls.Add(previewName,0,1);
+            panel.Controls.Add(labels,0,0);
+            openPlayer.Click+=(s,e)=>OpenPlayer();
+            StyleButton(openPlayer);
+            openPlayer.Anchor=AnchorStyles.Right;
+            panel.Controls.Add(openPlayer,1,0);
+
+            preview.Dock=DockStyle.Fill;
+            preview.BackColor=Color.FromArgb(12,21,35);
+            preview.SizeMode=PictureBoxSizeMode.Zoom;
+            preview.Margin=new Padding(0,7,0,4);
+            preview.Paint+=(s,e)=>{
+                if(preview.Image==null)
+                    TextRenderer.DrawText(e.Graphics,"選取素材以預覽",Font,preview.ClientRectangle,WhiteOnNavy,
+                        TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+            };
+            panel.Controls.Add(preview,0,1);
+            panel.SetColumnSpan(preview,2);
+
+            now.Text="目前 00:00:00.000";
+            now.ForeColor=Blue;
+            now.Font=new Font("Consolas",10,FontStyle.Bold);
+            now.AutoSize=true;
+            panel.Controls.Add(now,0,2);
+            durationLabel.AutoSize=true;
+            durationLabel.ForeColor=Muted;
+            durationLabel.Anchor=AnchorStyles.Right;
+            panel.Controls.Add(durationLabel,1,2);
+            timeline.Minimum=0;
+            timeline.Maximum=100000;
+            timeline.TickStyle=TickStyle.None;
+            timeline.AutoSize=false;
+            timeline.Height=25;
+            timeline.Dock=DockStyle.Top;
+            timeline.Margin=Padding.Empty;
+            timeline.AccessibleName="影片預覽時間軸";
+            timeline.Scroll+=(s,e)=>TimelineChanged();
+            tips.SetToolTip(timeline,"點擊或拖曳以預覽畫面");
+            panel.Controls.Add(timeline,0,3);
+            panel.SetColumnSpan(timeline,2);
+            previewTimer.Interval=260;
+            previewTimer.Tick+=(s,e)=>{previewTimer.Stop();RenderPreview();};
+            return panel;
+        }
+
+        TableLayoutPanel BuildTrimPanel(){
+            var panel=Grid(3,2);
+            panel.AutoSize=true;
+            panel.BackColor=Surface;
+            panel.Padding=new Padding(12,7,12,7);
+            panel.Margin=new Padding(0,0,0,9);
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            panel.Controls.Add(Heading("剪輯範圍",12),0,0);
+            panel.Controls.Add(BuildTimeInput("起點",startBox,()=>{startBox.Text=Clip.Fmt(CurrentTime());ApplyTimes();}),0,1);
+            panel.Controls.Add(BuildTimeInput("終點",endBox,()=>{endBox.Text=Clip.Fmt(CurrentTime());ApplyTimes();}),1,1);
+            var apply=new Button{Text="套用時間"};
+            apply.Click+=(s,e)=>ApplyTimes();
+            StyleButton(apply);
+            apply.Anchor=AnchorStyles.Bottom|AnchorStyles.Right;
+            panel.Controls.Add(apply,2,1);
+            return panel;
+        }
+
+        TableLayoutPanel BuildTimeInput(string label,TextBox box,Action setCurrent){
+            var input=Grid(2,2);
+            input.AutoSize=true;
+            input.Margin=new Padding(0,0,8,0);
+            input.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            input.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            var caption=new Label{Text=label,AutoSize=true,ForeColor=Muted,Margin=new Padding(0,0,0,2)};
+            input.Controls.Add(caption,0,0);
+            box.Font=new Font("Consolas",10);
+            box.BorderStyle=BorderStyle.FixedSingle;
+            box.Anchor=AnchorStyles.Left|AnchorStyles.Right;
+            box.Margin=new Padding(0,0,3,0);
+            box.AccessibleName=label+"時間";
+            box.KeyDown+=(s,e)=>{
+                if(e.KeyCode!=Keys.Enter)return;
+                e.SuppressKeyPress=true;
+                ApplyTimes();
+            };
+            input.Controls.Add(box,0,1);
+            var set=new Button{Text="設目前",AccessibleName=label+"設為目前時間"};
+            set.Click+=(s,e)=>{if(!busy&&selected>=0)setCurrent();};
+            StyleButton(set);
+            set.Margin=Padding.Empty;
+            input.Controls.Add(set,1,1);
+            return input;
+        }
+
+        TableLayoutPanel BuildOutputPanel(){
+            var panel=Grid(1,3);
+            panel.AutoSize=true;
+            panel.BackColor=Surface;
+            panel.Padding=new Padding(12,8,12,9);
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            panel.Controls.Add(Heading("輸出設定",12),0,0);
+            panel.Controls.Add(BuildExportSettings(),0,1);
+            var buttons=ButtonRow();
+            buttons.FlowDirection=FlowDirection.RightToLeft;
+            cut.Text="分別輸出";
+            cut.Click+=(s,e)=>Export(false);
+            merge.Text="合併輸出";
+            merge.Click+=(s,e)=>Export(true);
+            cancel.Text="取消";
+            cancel.Enabled=false;
+            cancel.Visible=false;
+            cancel.Click+=(s,e)=>Cancel();
+            StyleButton(cut);
+            StyleButton(merge,true);
+            StyleButton(cancel);
+            buttons.Controls.Add(merge);
+            buttons.Controls.Add(cut);
+            buttons.Controls.Add(cancel);
+            tips.SetToolTip(cut,"為每支影片各存一個檔案");
+            tips.SetToolTip(merge,"依素材清單順序合併成單一檔案");
+            panel.Controls.Add(buttons,0,2);
+            return panel;
+        }
+
+        static TableLayoutPanel Grid(int columns,int rows){
+            return new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=columns,RowCount=rows,Margin=Padding.Empty};
+        }
+
+        static FlowLayoutPanel ButtonRow(){
+            return new FlowLayoutPanel{Dock=DockStyle.Fill,AutoSize=true,WrapContents=true,Margin=Padding.Empty};
+        }
+
+        static Label Heading(string text,int size){
+            return new Label{Text=text,AutoSize=true,Font=new Font("Segoe UI",size,FontStyle.Bold),ForeColor=Ink,Margin=new Padding(0,0,0,3)};
+        }
+
+        static void StyleButton(Button button,bool primary=false,bool onNavy=false){
+            button.AutoSize=true;
+            button.AutoSizeMode=AutoSizeMode.GrowAndShrink;
+            button.MinimumSize=new Size(0,29);
+            button.Margin=new Padding(0,2,5,2);
+            button.Padding=new Padding(7,1,7,1);
+            button.FlatStyle=FlatStyle.Flat;
+            button.FlatAppearance.BorderSize=1;
+            button.FlatAppearance.BorderColor=primary?Blue:onNavy?Color.FromArgb(85,106,137):Border;
+            button.FlatAppearance.MouseOverBackColor=primary?Color.FromArgb(20,67,153):onNavy?Color.FromArgb(47,65,91):Canvas;
+            button.BackColor=primary?Blue:onNavy?Navy:Surface;
+            button.ForeColor=primary||onNavy?Color.White:Ink;
+            if(primary)button.EnabledChanged+=(s,e)=>{
+                button.BackColor=button.Enabled?Blue:Canvas;
+                button.FlatAppearance.BorderColor=button.Enabled?Blue:Border;
+            };
+        }
+
+        void UpdateClipRowHeight(){
+            int height=Math.Max(42,(int)Math.Ceiling(48*CurrentAutoScaleDimensions.Height/96f));
+            if(list.ItemHeight!=height)list.ItemHeight=height;
+        }
+
+        void DrawClip(object sender,DrawItemEventArgs e){
+            if(e.Index<0||e.Index>=list.Items.Count)return;
+            var clip=(Clip)list.Items[e.Index];
+            bool chosen=(e.State&DrawItemState.Selected)!=0;
+            Color background=chosen?Color.FromArgb(218,233,255):e.Index%2==0?Surface:list.BackColor;
+            using(var brush=new SolidBrush(background))e.Graphics.FillRectangle(brush,e.Bounds);
+            int padding=Math.Max(8,e.Bounds.Height/4);
+            if(chosen)using(var brush=new SolidBrush(Blue))
+                e.Graphics.FillRectangle(brush,e.Bounds.X,e.Bounds.Y,3,e.Bounds.Height);
+            var name=new Rectangle(e.Bounds.X+padding,e.Bounds.Y+3,Math.Max(0,e.Bounds.Width-padding*2),e.Bounds.Height/2);
+            var range=new Rectangle(name.X,name.Bottom,name.Width,Math.Max(0,e.Bounds.Bottom-name.Bottom-2));
+            var flags=TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix|TextFormatFlags.SingleLine|TextFormatFlags.VerticalCenter;
+            TextRenderer.DrawText(e.Graphics,clip.Name,list.Font,name,Ink,flags);
+            TextRenderer.DrawText(e.Graphics,Clip.Fmt(clip.Start)+"  →  "+Clip.Fmt(clip.End),Font,range,Muted,flags);
+            e.DrawFocusRectangle();
         }
         TableLayoutPanel BuildExportSettings(){
             var settings=new TableLayoutPanel{Dock=DockStyle.Fill,AutoSize=true,ColumnCount=3,RowCount=3,Margin=Padding.Empty};
@@ -135,10 +484,12 @@ namespace SkyVideoEditor {
             exportCodec.Items.AddRange(new[]{"H.264","H.265 (HEVC)"});
             exportContainer.Items.AddRange(new[]{"依來源（保留 MKV）","MP4","MKV"});
             for(int column=0;column<choices.Length;column++){
-                settings.Controls.Add(new Label{Text=labels[column],AutoSize=true},column,0);
+                settings.Controls.Add(new Label{Text=labels[column],AutoSize=true,ForeColor=Muted},column,0);
                 var choice=choices[column];
                 choice.AccessibleName=labels[column];
                 choice.DropDownStyle=ComboBoxStyle.DropDownList;
+                choice.FlatStyle=FlatStyle.Flat;
+                choice.BackColor=Color.FromArgb(245,248,252);
                 choice.Dock=DockStyle.Fill;
                 choice.SelectedIndex=0;
                 settings.Controls.Add(choice,column,1);
@@ -146,6 +497,8 @@ namespace SkyVideoEditor {
             }
             exportHelp.AutoSize=true;
             exportHelp.Dock=DockStyle.Fill;
+            exportHelp.ForeColor=Muted;
+            exportHelp.Margin=new Padding(3,5,3,5);
             settings.Controls.Add(exportHelp,0,2);
             settings.SetColumnSpan(exportHelp,3);
             settings.SizeChanged+=(s,e)=>exportHelp.MaximumSize=new Size(Math.Max(1,settings.ClientSize.Width-exportHelp.Margin.Horizontal),0);
@@ -167,14 +520,15 @@ namespace SkyVideoEditor {
             exportHelp.Text=modeHelp+Environment.NewLine+containerHelp;
         }
 
-        static TableLayoutPanel TimeRow(TextBox box,Button button){var row=new TableLayoutPanel{Dock=DockStyle.Fill,AutoSize=true,ColumnCount=2,RowCount=1,Margin=Padding.Empty};row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));row.RowStyles.Add(new RowStyle(SizeType.AutoSize));box.Anchor=AnchorStyles.Left|AnchorStyles.Right;button.AutoSize=true;button.Dock=DockStyle.Fill;row.Controls.Add(box,0,0);row.Controls.Add(button,1,0);return row;}
         async Task EnsureFfmpegReady(){if(ffmpeg!=null)return;if(ffmpegInit==null)ffmpegInit=Task.Run(()=>{string adjacent=System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"ffmpeg.exe");if(File.Exists(adjacent))return new[]{adjacent,FindSibling(adjacent,"ffprobe.exe")};string found=ExtractBundledFfmpeg();if(found==null)found=Find("ffmpeg.exe");return new[]{found,found==null?null:FindSibling(found,"ffprobe.exe")};});string[] result=await ffmpegInit;if(ffmpeg==null){ffmpeg=result[0];ffprobe=result[1];}UpdateFfmpegLabel();}
         void EnableFileDrop(Control c){c.AllowDrop=true;if(c!=list){c.DragEnter+=FileDragOver;c.DragOver+=FileDragOver;c.DragDrop+=(s,e)=>{if(e.Data.GetDataPresent(DataFormats.FileDrop))AddPaths((string[])e.Data.GetData(DataFormats.FileDrop));};}foreach(Control child in c.Controls)EnableFileDrop(child);}
         string ExtractBundledFfmpeg(){try{string dir=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"SKYVIDEO_EDITOR");string target=System.IO.Path.Combine(dir,"ffmpeg.exe");if(File.Exists(target)&&new FileInfo(target).Length>1000000)return target;using(Stream source=Assembly.GetExecutingAssembly().GetManifestResourceStream("ffmpeg.exe")){if(source==null)return null;Directory.CreateDirectory(dir);using(FileStream output=File.Create(target)){source.CopyTo(output);}return target;}}catch{return null;}}
-        void ApplyTheme(Control parent){foreach(Control c in parent.Controls){if(c is Button){var b=(Button)c;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(31,41,55);b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderColor=Color.FromArgb(148,163,184);b.FlatAppearance.MouseOverBackColor=Color.FromArgb(239,246,255);b.Font=new Font("Segoe UI",9,FontStyle.Regular);b.AutoSize=true;b.AutoSizeMode=AutoSizeMode.GrowAndShrink;b.MinimumSize=new Size(0,34);b.Padding=new Padding(10,3,10,3);}else if(c is TextBox){c.BackColor=Color.White;c.ForeColor=Color.FromArgb(31,41,55);c.Font=new Font("Segoe UI",10);}else if(c is CheckBox){c.ForeColor=Color.FromArgb(31,41,55);}else if(c is Label && c!=now && c!=ffLabel){c.ForeColor=Color.FromArgb(31,41,55);}ApplyTheme(c);}}
         static string FindSibling(string path,string name){string p=System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path),name);return File.Exists(p)?p:null;}
         string Find(string name){var c=new List<string>{System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory,name),System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),"ComfyUI",name),System.IO.Path.Combine("C:\\ComfyUI",name),System.IO.Path.Combine("D:\\ComfyUI",name)};string p=Environment.GetEnvironmentVariable("PATH")??"";c.AddRange(p.Split(';').Select(x=>System.IO.Path.Combine(x,name)));foreach(var x in c)if(File.Exists(x))return x;return null;}
-        void UpdateFfmpegLabel(){ffLabel.Text=ffmpeg==null?"● 尚未設定 FFmpeg":"● FFmpeg 已就緒";ffLabel.ForeColor=ffmpeg==null?Color.Salmon:Color.MediumAquamarine;}
+        void UpdateFfmpegLabel(){
+            ffLabel.Text=ffmpeg==null?"● 尚未設定 FFmpeg":"● FFmpeg 已就緒";
+            ffLabel.ForeColor=ffmpeg==null?Color.FromArgb(255,190,126):Color.FromArgb(149,231,194);
+        }
         void ChooseFfmpeg(){using(var d=new OpenFileDialog{Filter="ffmpeg.exe|ffmpeg.exe|執行檔|*.exe",Title="選擇 ffmpeg.exe"})if(d.ShowDialog()==DialogResult.OK){ffmpeg=d.FileName;ffprobe=FindSibling(ffmpeg,"ffprobe.exe");UpdateFfmpegLabel();}}
         void AddFiles(){using(var d=new OpenFileDialog{Filter="影片|*.mp4;*.mov;*.mkv;*.webm;*.avi;*.m4v;*.wmv;*.flv;*.mpeg;*.mpg;*.ts;*.mts;*.m2ts|所有檔案|*.*",Multiselect=true,Title="加入影片"})if(d.ShowDialog()==DialogResult.OK)AddPaths(d.FileNames);}
         async void AddPaths(string[] paths){var valid=paths.Where(p=>File.Exists(p)&&Regex.IsMatch(System.IO.Path.GetExtension(p),"^\\.(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpeg|mpg|ts|mts|m2ts)$",RegexOptions.IgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();if(valid.Length==0){MessageBox.Show(this,"請拖入支援的影片檔案，例如 MP4、MOV、MKV、WebM、AVI、MPEG 或 TS。","不支援的檔案");return;}if(busy){pendingDrops.Enqueue(valid);status.Text="已保留待處理的 "+valid.Length+" 支影片…";return;}SetBusy(true,"已接收 "+valid.Length+" 支影片，正在準備 FFmpeg…");await EnsureFfmpegReady();if(ffmpeg==null){SetBusy(false,"找不到 FFmpeg");MessageBox.Show(this,"找不到 ffmpeg.exe，請確認它和程式放在同一個資料夾。","FFmpeg 尚未就緒",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}int added=0;for(int i=0;i<valid.Length;i++){string p=valid[i];SetProgress((int)(i*100.0/valid.Length),"正在讀取第 "+(i+1)+"／"+valid.Length+" 支影片…");try{var c=await Task.Run(()=>Probe(p));clips.Add(c);list.Items.Add(c);added++;}catch(Exception ex){MessageBox.Show(this,p+"\n"+ex.Message,"無法加入影片",MessageBoxButtons.OK,MessageBoxIcon.Warning);}SetProgress((int)((i+1)*100.0/valid.Length),"已處理第 "+(i+1)+"／"+valid.Length+" 支影片");}SetBusy(false,"已加入 "+added+" 支影片");if(selected<0&&clips.Count>0)list.SelectedIndex=0;if(pendingDrops.Count>0){var next=pendingDrops.Dequeue();AddPaths(next);}}
@@ -193,6 +547,9 @@ namespace SkyVideoEditor {
         void SelectionChanged(){if(updatingList)return;if(list.SelectedIndices.Count==0)SelectClip(-1);else if(selected<0||!list.GetSelected(selected))SelectClip(list.SelectedIndex);UpdateEdgeButtons();}
         void SelectClip(int i){
             previewVersion++;previewTimer.Stop();var previous=preview.Image;preview.Image=null;if(previous!=null)previous.Dispose();
+            var next=i>=0&&i<clips.Count?clips[i]:null;
+            previewName.Text=next==null?"尚未選取影片":next.Name;
+            durationLabel.Text=next==null?"":"總長 "+Clip.Fmt(next.Duration);
             if(i<0||i>=clips.Count){selected=-1;startBox.Clear();endBox.Clear();timeline.Value=0;now.Text="目前 00:00:00.000";return;}
             selected=i;var c=clips[i];startBox.Text=Clip.Fmt(c.Start);endBox.Text=Clip.Fmt(c.End);timeline.Value=(int)(c.Start/Math.Max(c.Duration,.001)*100000);now.Text="目前 "+Clip.Fmt(c.Start);previewTimer.Start();
         }
@@ -245,6 +602,12 @@ namespace SkyVideoEditor {
             var chosen=SelectedClips();bool enabled=!busy&&chosen.Length>0;
             moveTop.Enabled=enabled&&!clips.Take(chosen.Length).SequenceEqual(chosen);
             moveBottom.Enabled=enabled&&!clips.Skip(clips.Count-chosen.Length).SequenceEqual(chosen);
+            clipCount.Text=clips.Count+" 支影片"+(chosen.Length>1?" · 已選 "+chosen.Length+" 支":"");
+            emptyClips.Visible=clips.Count==0;
+            list.Visible=clips.Count>0;
+            moveUp.Enabled=moveDown.Enabled=remove.Enabled=enabled;
+            selectAll.Enabled=cut.Enabled=merge.Enabled=!busy&&clips.Count>0;
+            openPlayer.Enabled=!busy&&ActiveClip()!=null;
         }
         void MoveToEdge(bool bottom){
             if(busy)return;var chosen=SelectedClips();if(chosen.Length==0)return;var active=ActiveClip();
@@ -457,7 +820,7 @@ namespace SkyVideoEditor {
         void OpenPlayer(){if(selected<0)return;try{Process.Start(clips[selected].Path);}catch(Exception ex){MessageBox.Show(ex.Message);}}
         void Cancel(){busy=false;cancel.Enabled=false;status.Text="正在取消…";}
         void SetProgress(int value,string text){Action update=()=>{progress.Value=Math.Max(0,Math.Min(100,value));status.Text=text;};if(IsHandleCreated&&InvokeRequired)BeginInvoke(update);else update();}
-        void SetBusy(bool b,string text){busy=b;add.Enabled=!b;chooseFfmpeg.Enabled=!b;cut.Enabled=!b;merge.Enabled=!b;cancel.Enabled=b;list.Enabled=!b;startBox.Enabled=!b;endBox.Enabled=!b;timeline.Enabled=!b;exportMode.Enabled=!b;exportContainer.Enabled=!b;UpdateExportHelp();UpdateEdgeButtons();if(b)progress.Value=0;else if(!text.Contains("完成")&&!text.Contains("已加入"))progress.Value=0;status.Text=text;}
+        void SetBusy(bool b,string text){busy=b;add.Enabled=!b;chooseFfmpeg.Enabled=!b;cancel.Enabled=b;cancel.Visible=b;list.Enabled=!b;startBox.Enabled=!b;endBox.Enabled=!b;timeline.Enabled=!b;exportMode.Enabled=!b;exportContainer.Enabled=!b;UpdateExportHelp();UpdateEdgeButtons();if(b)progress.Value=0;else if(!text.Contains("完成")&&!text.Contains("已加入"))progress.Value=0;status.Text=text;}
     }
     static class Program {
         [STAThread]

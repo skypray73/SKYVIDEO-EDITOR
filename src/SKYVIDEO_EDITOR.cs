@@ -12,8 +12,8 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("1.9.0.0")]
-[assembly: AssemblyFileVersion("1.9.0.0")]
+[assembly: AssemblyVersion("1.9.1.0")]
+[assembly: AssemblyFileVersion("1.9.1.0")]
 namespace SkyVideoEditor {
     class Clip {
         public string Path; public string Name; public double Duration, Start, End;
@@ -84,7 +84,7 @@ namespace SkyVideoEditor {
         TextBox startBox=new TextBox(), endBox=new TextBox(); Label now=new Label(), status=new Label(), ffLabel=new Label(); ProgressBar progress=new ProgressBar();
         Button add=new Button(), cut=new Button(), merge=new Button(), cancel=new Button(), moveTop=new Button(), moveBottom=new Button(); string ffmpeg,ffprobe; Task<string[]> ffmpegInit; readonly Queue<string[]> pendingDrops=new Queue<string[]>(); int selected=-1, dragIndex=-1; bool busy, updatingList; Point dragOrigin; int previewVersion; const string ClipDragFormat="SkyVideoEditor.Clips";
         public MainForm() {
-            Text="SKYVIDEO EDITOR — 1.9.0"; AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi; Font=new Font("Segoe UI",9); ClientSize=new Size(1100,680); MinimumSize=new Size(900,620); StartPosition=FormStartPosition.CenterScreen; BackColor=Color.White;
+            Text="SKYVIDEO EDITOR — 1.9.1"; AutoScaleDimensions=new SizeF(96,96);AutoScaleMode=AutoScaleMode.Dpi; Font=new Font("Segoe UI",9); ClientSize=new Size(1100,680); MinimumSize=new Size(900,620); StartPosition=FormStartPosition.CenterScreen; BackColor=Color.White;
             ForeColor=Color.FromArgb(31,41,55);BuildUi();ffLabel.Text="● 正在檢查 FFmpeg…";ffLabel.ForeColor=Color.DarkOrange;Shown+=async(s,e)=>await EnsureFfmpegReady();
         }
         void BuildUi() {
@@ -459,5 +459,21 @@ namespace SkyVideoEditor {
         void SetProgress(int value,string text){Action update=()=>{progress.Value=Math.Max(0,Math.Min(100,value));status.Text=text;};if(IsHandleCreated&&InvokeRequired)BeginInvoke(update);else update();}
         void SetBusy(bool b,string text){busy=b;add.Enabled=!b;chooseFfmpeg.Enabled=!b;cut.Enabled=!b;merge.Enabled=!b;cancel.Enabled=b;list.Enabled=!b;startBox.Enabled=!b;endBox.Enabled=!b;timeline.Enabled=!b;exportMode.Enabled=!b;exportContainer.Enabled=!b;UpdateExportHelp();UpdateEdgeButtons();if(b)progress.Value=0;else if(!text.Contains("完成")&&!text.Contains("已加入"))progress.Value=0;status.Text=text;}
     }
-    static class Program { [STAThread] static void Main(){try{Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);Application.Run(new MainForm());}catch(Exception ex){try{File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(),"SKYVIDEO_EDITOR_error.txt"),ex.ToString());}catch{}MessageBox.Show(ex.ToString(),"SKYVIDEO EDITOR 啟動失敗",MessageBoxButtons.OK,MessageBoxIcon.Error);}} }
+    static class Program {
+        [STAThread]
+        static void Main(){
+            try{
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                using(var icon=Icon.ExtractAssociatedIcon(typeof(Program).Assembly.Location))
+                using(var form=new MainForm()){
+                    if(icon!=null)form.Icon=icon;
+                    Application.Run(form);
+                }
+            }catch(Exception ex){
+                try{File.WriteAllText(Path.Combine(Path.GetTempPath(),"SKYVIDEO_EDITOR_error.txt"),ex.ToString());}catch{}
+                MessageBox.Show(ex.ToString(),"SKYVIDEO EDITOR 啟動失敗",MessageBoxButtons.OK,MessageBoxIcon.Error);
+            }
+        }
+    }
 }

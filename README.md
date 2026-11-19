@@ -1,7 +1,5 @@
 # SKYVIDEO EDITOR
 
-![SKYVIDEO EDITOR v1.10.0 的素材清單、影片預覽、剪輯範圍與輸出設定](./SKYVIDEO_EDITOR-v1.10.0.png)
-
 完全離線的 Windows 桌面影片剪輯與合成工具。影片只在本機處理，不需要瀏覽器、localhost 或網路服務。
 
 ## 功能

@@ -26,6 +26,13 @@ class NativeTests {
         using(var form=new MainForm()){
             var handle=form.Handle;var clips=Get<List<Clip>>(form,"clips");var list=Get<ListBox>(form,"list");
             var top=Get<Button>(form,"moveTop");var bottom=Get<Button>(form,"moveBottom");var timeline=Get<TrackBar>(form,"timeline");
+            var mode=Get<ComboBox>(form,"exportMode");var codec=Get<ComboBox>(form,"exportCodec");
+            var container=Get<ComboBox>(form,"exportContainer");var help=Get<Label>(form,"exportHelp");
+            Assert(mode.SelectedIndex==0&&codec.SelectedIndex==0&&container.SelectedIndex==0,"Default output settings");
+            codec.SelectedIndex=1;Assert(help.Text.Contains("H.265")&&help.Text.Contains("MKV"),"HEVC and source-format help");
+            mode.SelectedIndex=1;Assert(!codec.Enabled&&help.Text.Contains("關鍵影格"),"Stream copy disables codec choice");
+            container.SelectedIndex=1;Assert(help.Text.Contains("輸出為 MP4"),"Explicit container help");
+            mode.SelectedIndex=0;Assert(codec.Enabled&&codec.SelectedIndex==1,"Re-encode restores the prior codec choice");
             Assert(!top.Enabled&&!bottom.Enabled,"Empty list edge buttons");
             foreach(char c in "ABCDE")clips.Add(new Clip{Name=c.ToString(),Duration=100,End=100});
             Call(form,"RefreshClipList",new Clip[]{clips[1],clips[3]},clips[1]);timeline.Value=33000;
@@ -40,6 +47,7 @@ class NativeTests {
             Assert(top.Enabled&&!bottom.Enabled,"Bottom edge button states");
             Call(form,"SetBusy",true,"test");Call(form,"MoveToEdge",false);
             Assert(Order(clips)=="ACEBD"&&!top.Enabled&&!bottom.Enabled&&!timeline.Enabled,"Busy protection");
+            Assert(!mode.Enabled&&!codec.Enabled&&!container.Enabled,"Output settings are locked during processing");
             Call(form,"SetBusy",false,"test");
             Call(form,"RefreshClipList",new Clip[]{active},active);Call(form,"MoveToEdge",false);
             Assert(Order(clips)=="BACED","Single top");Call(form,"MoveToEdge",true);Assert(Order(clips)=="ACEDB","Single bottom");

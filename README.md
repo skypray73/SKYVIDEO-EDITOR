@@ -1,6 +1,6 @@
 # SKYVIDEO EDITOR
 
-![SKYVIDEO EDITOR 介面截圖](./SKYVIDEO_EDITOR-screenshot-v1.7.png)
+![SKYVIDEO EDITOR v1.9.0 的影片編碼與檔案格式選項](./SKYVIDEO_EDITOR-v1.9.0.png)
 
 完全離線的 Windows 桌面影片剪輯與合成工具。影片只在本機處理，不需要瀏覽器、localhost 或網路服務。
 
@@ -13,8 +13,15 @@
 - 清單有焦點時，Delete 移除所有選取項目；Ctrl+A 或「全選」按鈕選取全部。
 - 「上移」「下移」「移到最頂」「移到最底」或拖曳可一次搬移多筆選取項目，保留原本的相對順序。
 - 時間軸整條區域都可點選定位、按住拖曳預覽，不必精準抓住游標；不會改動剪輯起點／終點。
-- 「分別輸出」產生多個 MP4；「合併輸出」依清單順序產生一個 MP4。
+- 「分別輸出」為每支影片各存一個檔案。「合併輸出」依清單順序存成單一檔案。
 - 批次讀取、剪輯與合成會顯示完成進度。
+
+## 輸出設定
+
+- **重新編碼**依選取的起點與終點剪輯。預設 H.264，播放相容性較廣。H.265（HEVC）通常較省空間，編碼較慢，播放器需支援 HEVC。來源有音訊時，重新編碼會輸出 AAC。
+- **快速無損**直接複製第一條影片和第一條音訊串流，保留其原始編碼，並停用編碼選擇。切點可能落在附近的關鍵影格。合併需要相容的影音串流，且目標格式必須支援其編碼。
+- **依來源（保留 MKV）**是預設檔案格式。分別輸出時，MKV 來源輸出為 MKV，其餘為 MP4。合併清單只要含有 MKV 就輸出 MKV。也可明確指定 MP4 或 MKV。
+- 重新編碼合併時，以第一段的尺寸和影格率為準。其他片段按比例縮放並在需要時補黑邊。
 
 ## 從原始碼建置
 
@@ -60,7 +67,9 @@
 
 ## 直接使用 Release
 
-最新版 v1.8.2 提供單檔 `SKYVIDEO_EDITOR.exe`、含原始碼與測試的 `SKYVIDEO_EDITOR-Source-v1.8.2.zip`，以及內含 `ffmpeg.exe` 的 `SKYVIDEO_EDITOR-Portable.zip` 與 SHA256 校驗檔。下載 Portable ZIP 並完整解壓縮即可使用；也可把單檔 EXE 放入已有 `ffmpeg.exe` 的程式資料夾。Portable 沿用 v1.8.1 的 FFmpeg，保留其授權與對應來源資訊。
+從 [最新 Release](https://github.com/skypray73/SKYVIDEO-EDITOR/releases/latest) 下載 Portable ZIP 並完整解壓縮後，執行 `SKYVIDEO_EDITOR.exe`。也可把單檔 EXE 放入已有 `ffmpeg.exe` 的程式資料夾。
+
+v1.9.0 的 Portable 建置使用 Gyan.dev FFmpeg 9.0.2，內含支援 H.264 和 H.265 編碼的 `ffmpeg.exe`、`ffprobe.exe`、GPLv3 授權及來源資訊。
 
 ## 授權
 

@@ -12,8 +12,8 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-[assembly: AssemblyVersion("1.10.0.0")]
-[assembly: AssemblyFileVersion("1.10.0.0")]
+[assembly: AssemblyVersion("1.10.1.0")]
+[assembly: AssemblyFileVersion("1.10.1.0")]
 namespace SkyVideoEditor {
     class Clip {
         public string Path; public string Name; public double Duration, Start, End;
@@ -97,7 +97,7 @@ namespace SkyVideoEditor {
         readonly Button remove=new Button{Text="移除"}, selectAll=new Button{Text="全選"};
 
         public MainForm(){
-            Text="SKYVIDEO EDITOR — 1.10.0";
+            Text="SKYVIDEO EDITOR — 1.10.1";
             AutoScaleDimensions=new SizeF(96,96);
             AutoScaleMode=AutoScaleMode.Dpi;
             Font=new Font("Segoe UI",9);
@@ -117,7 +117,7 @@ namespace SkyVideoEditor {
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent,100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute,34));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             Controls.Add(root);
             root.Controls.Add(BuildHeader(),0,0);
 
@@ -137,9 +137,15 @@ namespace SkyVideoEditor {
             right.Controls.Add(BuildPreview(),0,0);
             right.Controls.Add(BuildTrimPanel(),0,1);
             right.Controls.Add(BuildOutputPanel(),0,2);
-            split.Panel2.Controls.Add(right);
+            var inspector=new Panel{Dock=DockStyle.Fill,AutoScroll=true};
+            right.Dock=DockStyle.None;
+            inspector.Controls.Add(right);
+            inspector.Resize+=(s,e)=>LayoutInspector(inspector,right);
+            split.Panel2.Controls.Add(inspector);
             root.Controls.Add(split,0,1);
             Load+=(s,e)=>{
+                FitWorkingArea(Screen.FromControl(this).WorkingArea);
+                LayoutInspector(inspector,right);
                 float scale=CurrentAutoScaleDimensions.Width/96f;
                 int leftMin=(int)Math.Ceiling(300*scale),rightMin=(int)Math.Ceiling(490*scale);
                 if(split.Width<leftMin+rightMin+split.SplitterWidth)return;
@@ -148,21 +154,24 @@ namespace SkyVideoEditor {
                 split.SplitterDistance=Math.Max(leftMin,Math.Min(split.Width-rightMin-split.SplitterWidth,(int)(split.Width*.35)));
             };
 
-            var footer=Grid(2,1);
+            var footer=Grid(3,1);
+            footer.AutoSize=true;
             footer.BackColor=Surface;
-            footer.Padding=new Padding(16,7,16,7);
+            footer.Padding=new Padding(14,5,9,5);
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,200));
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,116));
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             status.Text="就緒";
             status.AutoEllipsis=true;
-            status.Dock=DockStyle.Fill;
+            status.Anchor=AnchorStyles.Left|AnchorStyles.Right;
             status.TextAlign=ContentAlignment.MiddleLeft;
             status.ForeColor=Muted;
-            progress.Dock=DockStyle.Fill;
+            progress.Anchor=AnchorStyles.Left|AnchorStyles.Right;
             progress.Height=12;
             progress.Style=ProgressBarStyle.Continuous;
             footer.Controls.Add(status,0,0);
             footer.Controls.Add(progress,1,0);
+            footer.Controls.Add(BuildOutputCommands(),2,0);
             root.Controls.Add(footer,0,2);
 
             tips.AutoPopDelay=8000;
@@ -170,6 +179,25 @@ namespace SkyVideoEditor {
             tips.ReshowDelay=100;
             EnableFileDrop(this);
             UpdateEdgeButtons();
+        }
+
+        void FitWorkingArea(Rectangle work){
+            MinimumSize=new Size(Math.Min(MinimumSize.Width,work.Width),Math.Min(MinimumSize.Height,work.Height));
+            int width=Math.Min(Width,work.Width),height=Math.Min(Height,work.Height);
+            SetBounds(work.Left+(work.Width-width)/2,work.Top+(work.Height-height)/2,width,height);
+        }
+
+        void LayoutInspector(Panel host,TableLayoutPanel content){
+            SizeF dpi=CurrentAutoScaleDimensions;
+            var minimum=new Size((int)Math.Ceiling(470*dpi.Width/96f),(int)Math.Ceiling(490*dpi.Height/96f));
+            if(host.AutoScrollMinSize!=minimum)host.AutoScrollMinSize=minimum;
+            bool vertical=host.Height<minimum.Height;
+            bool horizontal=host.Width-(vertical?SystemInformation.VerticalScrollBarWidth:0)<minimum.Width;
+            vertical=vertical||(horizontal&&host.Height-SystemInformation.HorizontalScrollBarHeight<minimum.Height);
+            horizontal=horizontal||(vertical&&host.Width-SystemInformation.VerticalScrollBarWidth<minimum.Width);
+            var size=new Size(Math.Max(minimum.Width,host.Width-(vertical?SystemInformation.VerticalScrollBarWidth:0)),
+                Math.Max(minimum.Height,host.Height-(horizontal?SystemInformation.HorizontalScrollBarHeight:0)));
+            if(content.Size!=size)content.Bounds=new Rectangle(host.AutoScrollPosition,size);
         }
 
         TableLayoutPanel BuildHeader(){
@@ -391,14 +419,19 @@ namespace SkyVideoEditor {
         }
 
         TableLayoutPanel BuildOutputPanel(){
-            var panel=Grid(1,3);
+            var panel=Grid(1,2);
             panel.AutoSize=true;
             panel.BackColor=Surface;
             panel.Padding=new Padding(12,8,12,9);
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             panel.Controls.Add(Heading("輸出設定",12),0,0);
             panel.Controls.Add(BuildExportSettings(),0,1);
+            return panel;
+        }
+
+        FlowLayoutPanel BuildOutputCommands(){
             var buttons=ButtonRow();
+            buttons.WrapContents=false;
             buttons.FlowDirection=FlowDirection.RightToLeft;
             cut.Text="分別輸出";
             cut.Click+=(s,e)=>Export(false);
@@ -416,8 +449,7 @@ namespace SkyVideoEditor {
             buttons.Controls.Add(cancel);
             tips.SetToolTip(cut,"為每支影片各存一個檔案");
             tips.SetToolTip(merge,"依素材清單順序合併成單一檔案");
-            panel.Controls.Add(buttons,0,2);
-            return panel;
+            return buttons;
         }
 
         static TableLayoutPanel Grid(int columns,int rows){
